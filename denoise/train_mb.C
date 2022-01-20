@@ -42,21 +42,25 @@ TMVA::DataSetInfo &getDataSetInfo();
 
 void train_mb(){
     
+    TMVA::Tools::Instance();
+    
     using Architecture_t = TMVA::DNN::TCpu<Float_t>;
     using Scalar_t = typename Architecture_t::Scalar_t;
     using Layer_t = TMVA::DNN::VGeneralLayer<Architecture_t>;
     using DeepNet_t = TMVA::DNN::TDeepNet<Architecture_t, Layer_t>;
+    using TMVAInput_t =  std::tuple<const std::vector<TMVA::Event *> &, const TMVA::DataSetInfo &>;
     using TensorDataLoader_t = TTensorDataLoader<TMVAInput_t, Architecture_t>;
 
-    Architecture_t::SetRandomSeed(0);
+    Architecture_t::SetRandomSeed(10);
 
     // load data
-    size_t nTrainingSamples(50000);
-    size_t nValidationSamples(10000);
-    const std::vector<TMVA::Event *> allData = loadEvents();
+    size_t nTrainingSamples(9000);
+    size_t nValidationSamples(1000);
+    const std::vector<TMVA::Event *> allData = loadEvents(); //TODO: free allData memory
     const std::vector<TMVA::Event *> eventCollectionTraining{allData.begin(), allData.begin() + nTrainingSamples};
     const std::vector<TMVA::Event *> eventCollectionValidation{allData.begin() + nTrainingSamples, allData.end()};
 
+    std::cout << "load complete" << std::endl;
     
     
     /* For building a CNN one needs to define
@@ -64,7 +68,7 @@ void train_mb(){
     -  Batch Layout :  batch size | number of channels | image size = (height*width) */
 
     size_t nThreads = 1; 
-    size_t batchSize = 100;
+    size_t batchSize = 10;
     size_t inputDepth  = 1;
     size_t inputHeight = 28;
     size_t inputWidth  = 28;
@@ -75,53 +79,98 @@ void train_mb(){
     EInitialization I  = EInitialization::kUniform;
     ERegularization R    = ERegularization::kNone;
     EOptimizer O         = EOptimizer::kAdam;
-    Scalar_t weightDecay = 0; //FIXME:
+    Scalar_t weightDecay = 0.0; 
     
     DeepNet_t deepNet(batchSize, inputDepth, inputHeight, inputWidth, batchDepth, batchHeight, batchWidth, J, I, R, weightDecay);
-    DeepNet_t fNet(1, inputDepth, inputHeight, inputWidth, batchDepth, batchHeight, batchWidth, J, I, R, weightDecay);
+    //DeepNet_t fNet(1, inputDepth, inputHeight, inputWidth, batchDepth, batchHeight, batchWidth, J, I, R, weightDecay);
+    //FIXME: fix nn architecture
+    //TMaxPoolLayer<Architecture_t> *maxPool = deepNet.AddMaxPoolLayer(2, 2, 1, 1);
+    //if (maxPool->GetDescriptors() == nullptr ) std::cout << "Descriptor is nullptr" << std::endl;
+    TConvLayer<Architecture_t> *convLayer1 = deepNet.AddConvLayer(8, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
+    /* TConvLayer<Architecture_t> *convLayer2 = deepNet.AddConvLayer(16, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
+    TConvLayer<Architecture_t> *convLayer3 = deepNet.AddConvLayer(32, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
+    TConvLayer<Architecture_t> *convLayer4 = deepNet.AddConvLayer(32, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
+    TConvLayer<Architecture_t> *convLayer5 = deepNet.AddConvLayer(16, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
+    TConvLayer<Architecture_t> *convLayer6 = deepNet.AddConvLayer(8, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu); */
+    TConvLayer<Architecture_t> *convLayer7 = deepNet.AddConvLayer(1, 3, 3, 1, 1, 1, 1, EActivationFunction::kSigmoid);
+    TReshapeLayer<Architecture_t> *reshape1 = deepNet.AddReshapeLayer(0, 0, 0, 1);
 
-    TConvLayer<Architecture_t> *convLayer = deepNet.AddConvLayer(4, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
-    convLayer->Initialize();
-    TMaxPoolLayer<Architecture_t> *maxPool = deepNet.AddMaxPoolLayer(2, 2, 1, 1);
+    /* TDenseLayer<Architecture_t> *denseLayer1 = deepNet.AddDenseLayer(20, EActivationFunction::kRelu, 0.);
+    TDenseLayer<Architecture_t> *denseLayer2 = deepNet.AddDenseLayer(28*28, EActivationFunction::kRelu, 0.); */
+    deepNet.Initialize();
+
+    std::cout  << "*****   Deep Learning Network  *****" << std::endl;
+    deepNet.Print();
+
+/*     TMaxPoolLayer<Architecture_t> *maxPool = deepNet.AddMaxPoolLayer(2, 2, 1, 1);
     TReshapeLayer<Architecture_t> *reshape1 = deepNet.AddReshapeLayer(0, 0, 0, 1);
     TDenseLayer<Architecture_t> *denseLayer1 = deepNet.AddDenseLayer(16, EActivationFunction::kRelu);
     denseLayer1->Initialize();
     TDenseLayer<Architecture_t> *denseLayer2 = deepNet.AddDenseLayer(10, EActivationFunction::kSigmoid);
-    denseLayer2->Initialize();
+    denseLayer2->Initialize(); */
 
     // Loading the training and validation datasets
-    TMVAInput_t trainingTuple = std::tie(eventCollectionTraining, getDataSetInfo()); //TODO:
+    TMVA::DataSetInfo dsix;
+    for(int i{0}; i < 28*28; i++){
+        TString in1; in1.Form("in%d", i);
+        TString in2; in2.Form("input pixel %d", i);
+        dsix.AddVariable(in1, in2, "", 0., 1.);
+
+        TString out1; out1.Form("out%d", i);
+        TString out2; out2.Form("output pixel %d", i);
+        dsix.AddTarget(out1, out2, "", 0., 1.);
+    }
+    TMVAInput_t trainingTuple = std::tie(eventCollectionTraining, dsix); //TODO: getDataSetInfo()
     TensorDataLoader_t trainingData(trainingTuple, nTrainingSamples, batchSize,
                                     {inputDepth, inputHeight, inputWidth},
                                     {deepNet.GetBatchDepth(), deepNet.GetBatchHeight(), deepNet.GetBatchWidth()} ,
                                     deepNet.GetOutputWidth(), nThreads);
 
-    TMVAInput_t validationTuple = std::tie(eventCollectionValidation, getDataSetInfo());
+    TMVAInput_t validationTuple = std::tie(eventCollectionValidation, dsix);
     TensorDataLoader_t validationData(validationTuple, nValidationSamples, batchSize,
                                     {inputDepth, inputHeight, inputWidth},
                                     { deepNet.GetBatchDepth(),deepNet.GetBatchHeight(), deepNet.GetBatchWidth()} ,
                                     deepNet.GetOutputWidth(), nThreads);
 
+    std::cout << "training and validation dataset created !" << std::endl;
     
-    
-    
+    Double_t minValError = 0.0;
+    for (auto batch : validationData) {
+        auto inputTensor = batch.GetInput();
+        auto outputMatrix = batch.GetOutput();
+        auto weights = batch.GetWeights();
+/*         Architecture_t::PrintTensor(batch.GetInput(),"input tensor",true);
+        typename Architecture_t::Tensor_t tOut(batch.GetOutput());
+        typename Architecture_t::Tensor_t tW(batch.GetWeights());
+        Architecture_t::PrintTensor(tOut,"label tensor",true)   ;
+        Architecture_t::PrintTensor(tW,"weight tensor",true)  ; */
+        deepNet.Forward(inputTensor, false);
+        /* std::cout << "forward fine" << std::endl;
+        std::cin.get(); */
+        minValError += deepNet.Loss(inputTensor, outputMatrix, weights, false, false);
+    }
+    minValError /= (Double_t)(nValidationSamples / batchSize);
+    std::cout << "initial valLoss: "<< minValError << std::endl;
+        
     std::unique_ptr<TMVA::DNN::VOptimizer<Architecture_t, Layer_t, DeepNet_t>> optimizer;
     optimizer = std::unique_ptr<TMVA::DNN::TAdam<Architecture_t, Layer_t, DeepNet_t>>(
                 new TMVA::DNN::TAdam<Architecture_t, Layer_t, DeepNet_t>(
                 deepNet, 0.001, 0.9, 0.999, 1e-7));
 
+
     size_t batchesInEpoch = nTrainingSamples / deepNet.GetBatchSize();
     size_t epoch(0);
-    size_t maxEpoch(5);
+    size_t maxEpoch(2);
     TMVA::RandomGenerator<TRandom3> rng(123); 
+    std::cout  << "*****  Starting training loop  *****" << std::endl;
     while(epoch < maxEpoch){
         TStopwatch timer;
         timer.Start();
         trainingData.Shuffle(rng);
-        
         for (size_t i = 0; i < batchesInEpoch; ++i ){
+            //std::cin.get();
             auto my_batch = trainingData.GetTensorBatch();
-            deepNet.Forward(my_batch.GetInput(), true);
+            deepNet.Forward(my_batch.GetInput(), false);
             deepNet.Backward(my_batch.GetInput(), my_batch.GetOutput(), my_batch.GetWeights());
             optimizer->IncrementGlobalStep();
             optimizer->Step();
@@ -149,6 +198,11 @@ void train_mb(){
         timer.Stop();
         Double_t dt = timer.RealTime();
     
+        std::cout   << "Epoch: " << epoch + 1 
+                    << std::setw(12) << "  Time: " << dt <<"s" 
+                    << std::setw(12) << "  Loss: " << trainError 
+                    << std::setw(12) << "  valLoss: " << valError << "\n";
+        
         epoch++;
     }
 
@@ -161,7 +215,7 @@ std::vector<TMVA::Event *> loadEvents(){ //target is denoisy input
     TStopwatch timer;
     timer.Start();
     std::cout << "loading Events from file ... \n" ; 
-    TFile *file = TFile::Open("mnist.root"); 
+    TFile *file = TFile::Open("../mnist.root"); 
     TTree *tree = (TTree*)file->Get("train"); 
     Float_t x0[784];
     tree->SetBranchAddress("x", x0);
@@ -170,7 +224,7 @@ std::vector<TMVA::Event *> loadEvents(){ //target is denoisy input
     TRandom2 *rand = new TRandom2(123); //fixed seed
     
     Long64_t nofEntries = tree->GetEntries();
-    for(Long64_t i=0; i < nofEntries; i++){
+    for(Long64_t i=0; i < 10000; i++){
         tree->GetEntry(i);
         std::vector<Float_t> input; 
         std::vector<Float_t> target; 
@@ -204,6 +258,6 @@ TMVA::DataSetInfo &getDataSetInfo(){
         TString out1; out1.Form("out%d", i);
         TString out2; out2.Form("output pixel %d", i);
         dsi->AddTarget(out1, out2, "", 0., 1.);
-    
+    }
     return *dsi;
 }
