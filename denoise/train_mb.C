@@ -1,11 +1,11 @@
 #include <iostream>
 #include <vector>
 
-
 #include "TMVA/DNN/DeepNet.h"
 #include "TMVA/DNN/GeneralLayer.h"
 #include "TMVA/DNN/Architectures/Reference.h"
 #include "TMVA/DNN/Architectures/Cpu.h"
+#include "RConfigure.h"   // for definition of R__HAS_CUDNN
 #include "TMVA/Tools.h"
 #include "TMVA/Configurable.h"
 #include "TMVA/IMethod.h"
@@ -26,6 +26,12 @@
 #include "TFile.h"
 #include "TRandom2.h"
 #include "TStopwatch.h"
+#ifdef R__HAS_TMVAGPU
+#include "TMVA/DNN/Architectures/Cuda.h" //FIXME:
+#ifdef R__HAS_CUDNN
+//#include "TMVA/DNN/Architectures/TCudnn.h"
+#endif
+#endif
 
 using namespace TMVA::DNN::CNN;
 using namespace TMVA::DNN;
@@ -36,20 +42,21 @@ using TMVA::DNN::EInitialization;
 using TMVA::DNN::EOutputFunction;
 using TMVA::DNN::EOptimizer;
 
+using Architecture_t = TMVA::DNN::TCuda<Float_t>;
+using Scalar_t = typename Architecture_t::Scalar_t;
+using Layer_t = TMVA::DNN::VGeneralLayer<Architecture_t>;
+using DeepNet_t = TMVA::DNN::TDeepNet<Architecture_t, Layer_t>;
+using TMVAInput_t =  std::tuple<const std::vector<TMVA::Event *> &, const TMVA::DataSetInfo &>;
+using TensorDataLoader_t = TTensorDataLoader<TMVAInput_t, Architecture_t>;
+
 std::vector<TMVA::Event *> loadEvents();
 TMVA::DataSetInfo &getDataSetInfo();
-
+void SaveModelToXML(void * , DeepNet_t &);
 
 void train_mb(){
     
     TMVA::Tools::Instance();
     
-    using Architecture_t = TMVA::DNN::TCpu<Float_t>;
-    using Scalar_t = typename Architecture_t::Scalar_t;
-    using Layer_t = TMVA::DNN::VGeneralLayer<Architecture_t>;
-    using DeepNet_t = TMVA::DNN::TDeepNet<Architecture_t, Layer_t>;
-    using TMVAInput_t =  std::tuple<const std::vector<TMVA::Event *> &, const TMVA::DataSetInfo &>;
-    using TensorDataLoader_t = TTensorDataLoader<TMVAInput_t, Architecture_t>;
 
     Architecture_t::SetRandomSeed(10);
 
@@ -83,9 +90,6 @@ void train_mb(){
     
     DeepNet_t deepNet(batchSize, inputDepth, inputHeight, inputWidth, batchDepth, batchHeight, batchWidth, J, I, R, weightDecay);
     //DeepNet_t fNet(1, inputDepth, inputHeight, inputWidth, batchDepth, batchHeight, batchWidth, J, I, R, weightDecay);
-    //FIXME: fix nn architecture
-    //TMaxPoolLayer<Architecture_t> *maxPool = deepNet.AddMaxPoolLayer(2, 2, 1, 1);
-    //if (maxPool->GetDescriptors() == nullptr ) std::cout << "Descriptor is nullptr" << std::endl;
     TConvLayer<Architecture_t> *convLayer1 = deepNet.AddConvLayer(8, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
     /* TConvLayer<Architecture_t> *convLayer2 = deepNet.AddConvLayer(16, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
     TConvLayer<Architecture_t> *convLayer3 = deepNet.AddConvLayer(32, 3, 3, 1, 1, 1, 1, EActivationFunction::kRelu);
@@ -102,12 +106,6 @@ void train_mb(){
     std::cout  << "*****   Deep Learning Network  *****" << std::endl;
     deepNet.Print();
 
-/*     TMaxPoolLayer<Architecture_t> *maxPool = deepNet.AddMaxPoolLayer(2, 2, 1, 1);
-    TReshapeLayer<Architecture_t> *reshape1 = deepNet.AddReshapeLayer(0, 0, 0, 1);
-    TDenseLayer<Architecture_t> *denseLayer1 = deepNet.AddDenseLayer(16, EActivationFunction::kRelu);
-    denseLayer1->Initialize();
-    TDenseLayer<Architecture_t> *denseLayer2 = deepNet.AddDenseLayer(10, EActivationFunction::kSigmoid);
-    denseLayer2->Initialize(); */
 
     // Loading the training and validation datasets
     TMVA::DataSetInfo dsix;
@@ -145,8 +143,6 @@ void train_mb(){
         Architecture_t::PrintTensor(tOut,"label tensor",true)   ;
         Architecture_t::PrintTensor(tW,"weight tensor",true)  ; */
         deepNet.Forward(inputTensor, false);
-        /* std::cout << "forward fine" << std::endl;
-        std::cin.get(); */
         minValError += deepNet.Loss(inputTensor, outputMatrix, weights, false, false);
     }
     minValError /= (Double_t)(nValidationSamples / batchSize);
@@ -206,6 +202,16 @@ void train_mb(){
         epoch++;
     }
 
+    // Save Model ......
+    TString xmlName("model.xml");
+    void* doc       = TMVA::gTools().xmlengine().NewDoc();
+    void* rootnode  = TMVA::gTools().AddChild(0, "MethodSetup", "", true);
+    TMVA::gTools().xmlengine().DocSetRootElement(doc, rootnode);
+    TMVA::gTools().AddAttr(rootnode, "Method", "test_mb");
+    SaveModelToXML(rootnode, deepNet);
+    TMVA::gTools().xmlengine().SaveDoc(doc, xmlName);
+    TMVA::gTools().xmlengine().FreeDoc(doc);
+
 
 }
 
@@ -260,4 +266,51 @@ TMVA::DataSetInfo &getDataSetInfo(){
         dsi->AddTarget(out1, out2, "", 0., 1.);
     }
     return *dsi;
+}
+
+void SaveModelToXML(void * parent, DeepNet_t &net){ //TODO: parent = ?
+    //TMVA::Tools::Instance();
+    auto &xmlEngine = TMVA::gTools().xmlengine();
+    void *nn = xmlEngine.NewChild(parent, 0, "Weights");
+    // Deep Net specific info
+    Int_t depth = net.GetDepth();
+
+    Int_t inputDepth = net.GetInputDepth();
+    Int_t inputHeight = net.GetInputHeight();
+    Int_t inputWidth = net.GetInputWidth();
+
+    Int_t batchSize = net.GetBatchSize();
+
+    Int_t batchDepth = net.GetBatchDepth();
+    Int_t batchHeight = net.GetBatchHeight();
+    Int_t batchWidth = net.GetBatchWidth();
+
+    char lossFunction = static_cast<char>(net.GetLossFunction());
+    char initialization = static_cast<char>(net.GetInitialization());
+    char regularization = static_cast<char>(net.GetRegularization());
+
+    Double_t weightDecay = net.GetWeightDecay();
+    //char outputFunction = static_cast<char>(net.GetOutputFunction()); // ??? OutputFunction="S" 
+    // Add attributes to the parent node
+    xmlEngine.NewAttr(nn, 0, "NetDepth", TMVA::gTools().StringFromInt(depth));
+
+    xmlEngine.NewAttr(nn, 0, "InputDepth", TMVA::gTools().StringFromInt(inputDepth));
+    xmlEngine.NewAttr(nn, 0, "InputHeight", TMVA::gTools().StringFromInt(inputHeight));
+    xmlEngine.NewAttr(nn, 0, "InputWidth", TMVA::gTools().StringFromInt(inputWidth));
+
+    xmlEngine.NewAttr(nn, 0, "BatchSize", TMVA::gTools().StringFromInt(batchSize));
+    xmlEngine.NewAttr(nn, 0, "BatchDepth", TMVA::gTools().StringFromInt(batchDepth));
+    xmlEngine.NewAttr(nn, 0, "BatchHeight", TMVA::gTools().StringFromInt(batchHeight));
+    xmlEngine.NewAttr(nn, 0, "BatchWidth", TMVA::gTools().StringFromInt(batchWidth));
+
+    xmlEngine.NewAttr(nn, 0, "LossFunction", TString(lossFunction));
+    xmlEngine.NewAttr(nn, 0, "Initialization", TString(initialization));
+    xmlEngine.NewAttr(nn, 0, "Regularization", TString(regularization));
+    //xmlEngine.NewAttr(nn, 0, "OutputFunction", TString(outputFunction));
+
+    TMVA::gTools().AddAttr(nn, "WeightDecay", weightDecay);
+
+    for (Int_t i = 0; i < depth; i++){
+        net.GetLayerAt(i)->AddWeightsXMLTo(nn);
+    }
 }
