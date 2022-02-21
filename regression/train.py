@@ -30,13 +30,12 @@ dataloader.PrepareTrainingAndTestTree(
     ROOT.TCut(""), "SplitMode=Random:NormMode=None:V:!Correlations:!CalcCorrelations")
 
 # Define model
-#TODO: batchLayout needed?
+batchLayoutString = "BatchLayout=100|1|784:"
 inputLayoutString = "InputLayout=1|28|28:"
 layoutString = "Layout=CONV|4|3|3|1|1|1|1|RELU,MAXPOOL|2|2|1|1,RESHAPE|FLAT,DENSE|16|RELU,DENSE|10|IDENTITY:"
-trainingString = "TrainingStrategy=MaxEpochs=15,BatchSize=100,LearningRate=1e-3:"
-cnnOptions = "H:V:VarTransform=None:ErrorStrategy=SUMOFSQUARES:VerbosityLevel=Debug"
-options = inputLayoutString + layoutString + trainingString + cnnOptions
-print(options) 
+trainingString = "TrainingStrategy=MaxEpochs=30,BatchSize=100,LearningRate=1e-3:"
+cnnOptions = "H:V:VarTransform=None:ErrorStrategy=SUMOFSQUARES:VerbosityLevel=Debug:Architecture=GPU"
+options = batchLayoutString + inputLayoutString + layoutString + trainingString + cnnOptions
 
 # Book methods
 
