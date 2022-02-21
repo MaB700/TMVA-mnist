@@ -27,9 +27,9 @@
 #include "TRandom2.h"
 #include "TStopwatch.h"
 #ifdef R__HAS_TMVAGPU
-#include "TMVA/DNN/Architectures/Cuda.h" //FIXME:
+//#include "TMVA/DNN/Architectures/Cuda.h" //cuda is ~4.5x slower than cudnn! and saving layer weights bugs ?!
 #ifdef R__HAS_CUDNN
-//#include "TMVA/DNN/Architectures/TCudnn.h"
+#include "TMVA/DNN/Architectures/TCudnn.h"
 #endif
 #endif
 
@@ -42,7 +42,7 @@ using TMVA::DNN::EInitialization;
 using TMVA::DNN::EOutputFunction;
 using TMVA::DNN::EOptimizer;
 
-using Architecture_t = TMVA::DNN::TCuda<Float_t>;
+using Architecture_t = TMVA::DNN::TCudnn<Float_t>;
 using Scalar_t = typename Architecture_t::Scalar_t;
 using Layer_t = TMVA::DNN::VGeneralLayer<Architecture_t>;
 using DeepNet_t = TMVA::DNN::TDeepNet<Architecture_t, Layer_t>;
@@ -208,10 +208,10 @@ void train_mb(){
     void* rootnode  = TMVA::gTools().AddChild(0, "MethodSetup", "", true);
     TMVA::gTools().xmlengine().DocSetRootElement(doc, rootnode);
     TMVA::gTools().AddAttr(rootnode, "Method", "test_mb");
-    SaveModelToXML(rootnode, deepNet);
+    SaveModelToXML(rootnode, deepNet); //FIXME:
     TMVA::gTools().xmlengine().SaveDoc(doc, xmlName);
     TMVA::gTools().xmlengine().FreeDoc(doc);
-
+ 
 
 }
 
@@ -254,7 +254,7 @@ std::vector<TMVA::Event *> loadEvents(){ //target is denoisy input
     return allData;
 }
 
-TMVA::DataSetInfo &getDataSetInfo(){
+/* TMVA::DataSetInfo &getDataSetInfo(){
     TMVA::DataSetInfo* dsi;
     for(int i{0}; i < 28*28; i++){
         TString in1; in1.Form("in%d", i);
@@ -264,11 +264,11 @@ TMVA::DataSetInfo &getDataSetInfo(){
         TString out1; out1.Form("out%d", i);
         TString out2; out2.Form("output pixel %d", i);
         dsi->AddTarget(out1, out2, "", 0., 1.);
-    }
+    } 
     return *dsi;
-}
+} */
 
-void SaveModelToXML(void * parent, DeepNet_t &net){ //TODO: parent = ?
+void SaveModelToXML(void * parent, DeepNet_t &net){ 
     //TMVA::Tools::Instance();
     auto &xmlEngine = TMVA::gTools().xmlengine();
     void *nn = xmlEngine.NewChild(parent, 0, "Weights");
