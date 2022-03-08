@@ -30,7 +30,7 @@ dataloader.PrepareTrainingAndTestTree(
 batchLayoutString = "BatchLayout=100|1|784:"
 inputLayoutString = "InputLayout=1|28|28:"
 layoutString = "Layout=CONV|4|3|3|1|1|1|1|RELU,MAXPOOL|2|2|1|1,RESHAPE|FLAT,DENSE|16|RELU,DENSE|10|SIGMOID:"
-trainingString = "TrainingStrategy=MaxEpochs=30,BatchSize=100,Optimizer=ADAM,LearningRate=1e-3:"
+trainingString = "TrainingStrategy=MaxEpochs=100,BatchSize=100,Optimizer=ADAM,LearningRate=1e-3:"
 cnnOptions = "H:V:VarTransform=None:ErrorStrategy=SUMOFSQUARES:VerbosityLevel=Debug:Architecture=GPU"
 options = batchLayoutString + inputLayoutString + layoutString + trainingString + cnnOptions
 
@@ -39,6 +39,7 @@ factory.BookMethod(dataloader, ROOT.TMVA.Types.kDL, "tmvaDL",
                    options)
 
 # Set output function -- TODO: using softmax yield worst results, may use different ErrorStrategy
+# only use output function for prediction ?
 # factory.GetMethod(dataloader.GetName() ,"tmvaDL").SetOutputFunction(ROOT.TMVA.DNN.EOutputFunction.kSoftmax)
 
 # Run training, test and evaluation
