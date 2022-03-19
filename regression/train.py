@@ -18,7 +18,7 @@ data = ROOT.TFile.Open("mnist0.root")
 dataloader.AddRegressionTree(data.Get("train"), 1.0)
 
 for i in range(28 * 28 * 1):
-    dataloader.AddVariable("x[{}]".format(i), "x_{}".format(i), "", "F", 0.0, 1.0)
+    dataloader.AddVariable("x[{}]".format(i), "x_{}".format(i), "", "F", 0.0, 1.0) # [0F, 1F] boundry problems ?
 
 for i in range(10):
     dataloader.AddTarget("y[{}]".format(i), "y_{}".format(i), "", 0.0, 1.0)
